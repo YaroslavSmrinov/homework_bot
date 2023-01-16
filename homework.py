@@ -1,13 +1,15 @@
 import logging
 import os
 import requests
-from sys import stdout
+from sys import stdout, exit
 import time
-
+from http import HTTPStatus
 import telegram
 from dotenv import load_dotenv
 
-from custom_exceptions import RequestException, Not200status
+from custom_exceptions import (RequestException,
+                               CustomTelegramError,
+                               PractikumException)
 
 
 load_dotenv()
@@ -39,7 +41,7 @@ handler.setFormatter(formatter)
 logger.addHandler(handler)
 
 
-def check_tokens():
+def check_tokens() -> bool:
     """.
     Проверяет доступность переменных окружения,
     которые необходимы для работы программы.
@@ -50,30 +52,33 @@ def check_tokens():
         'TELEGRAM_CHAT_ID': TELEGRAM_CHAT_ID,
     }
     for token in tokens:
-        if tokens[token] is None:
-            logger.critical(f'Can\'t get {token} from venv. Check .env file')
+        if not tokens[token]:
+            logger.critical(f'{token} не найден. Остановил работу программы')
             return False
-    logger.info('All tokens found.')
+    logger.info('Все токены в порядке.')
     return True
 
 
-def send_message(bot, message):
+def send_message(bot, message) -> None:
     """.
     Отправляет сообщение в Telegram чат, определяемый переменной
     окружения TELEGRAM_CHAT_ID. Принимает на вход два параметра:
     экземпляр класса Bot и строку с текстом сообщения
     """
     try:
+        logger.info('Попытка отправить сообщение в телеграм.')
         bot.send_message(
             chat_id=TELEGRAM_CHAT_ID,
             text=message
         )
-        logger.debug('Message to telegram successfully sent')
+        logger.debug('Сообщение в телеграм успешно отправлено.')
+    except CustomTelegramError as error:
+        raise (error, f'Ошибка при отправке. Причина: {error}')
     except Exception as error:
-        logger.error(f'Message to telegram wasn\'t sent. Reason {error}')
+        logger.error(f'Ошибка при отправке. Причина: {error}')
 
 
-def get_api_answer(timestamp):
+def get_api_answer(timestamp) -> dict:
     """Делает запрос к единственному эндпоинту API-сервиса.
     В качестве параметра в функцию передается временная метка.
     В случае успешного запроса должна вернуть ответ API,
@@ -84,18 +89,16 @@ def get_api_answer(timestamp):
             ENDPOINT,
             headers=HEADERS,
             params={'from_date': timestamp})
-        if response.status_code == 200:
-            logger.info('Got data from endpoint')
+        if response.status_code == HTTPStatus.OK:
+            logger.info('Успешно получили информацию от практикума.')
             return response.json()
         else:
-            logger.error(f'Практикум недоступен {response.status_code}')
-            raise Not200status
+            raise (PractikumException, RequestException)
     except requests.exceptions.RequestException as error:
-        logger.error(f'Что-то не так {error}')
         raise (RequestException, error)
 
 
-def check_response(response):  # loging required
+def check_response(response) -> dict:
     """
     проверяет ответ API на соответствие документации.
     В качестве параметра функция получает ответ API,
@@ -103,21 +106,20 @@ def check_response(response):  # loging required
     В случае успеха возвращает последнюю домашку
     """
     if not isinstance(response, dict):
-        logger.error('Wrong API RESP')
-        raise TypeError
+        raise (PractikumException, f'Ожидал получить словарь, '
+                                   f'получил {response}.')
     if 'homeworks' not in response:
-        logger.error('Can\' find keys')
-        raise KeyError
+        raise (PractikumException, f'Нужных ключей нет, '
+                                   f'только это {response.keys()}')
     if not isinstance(response['homeworks'], list):
-        logger.error('Wrong API RESP')
-        raise TypeError
+        raise (PractikumException, f'Ожидал список c ключом homeworks, '
+                                   f'получил {response["homeworks"]}.')
     if len(response['homeworks']) < 1:
-        logger.debug('Отсутствуют работы в списке')
-        raise IndexError
+        pass
     return response.get('homeworks')[0]
 
 
-def parse_status(homework):
+def parse_status(homework) -> str:
     """
     Извлекает из информации о конкретной домашней работе статус этой работы.
     В качестве параметра функция получает только один элемент из списка
@@ -125,11 +127,10 @@ def parse_status(homework):
     в Telegram строку, содержащую один из вердиктов словаря HOMEWORK_VERDICTS.
     """
     if homework.get('status') not in HOMEWORK_VERDICTS.keys():
-        logger.error(f'Unexpected status {homework.get("status")}')
-        raise KeyError
+        raise (KeyError, f'Неожиданный статус {homework.get("status")}')
     if 'homework_name' not in homework:
-        logger.error('Can\' find keys')
-        raise KeyError
+        raise (KeyError, f'Не нашел ключик "homework_name", '
+                         f'только вот это {homework.keys()}')
     hw_status = homework.get('status')
     hw_name = homework.get('homework_name')
     verdict = HOMEWORK_VERDICTS.get(hw_status)
@@ -141,15 +142,15 @@ def main():
     logger.info('Start program')
     if not check_tokens():
         logger.info('Program stopped')
-        return None
+        exit(os.EX_DATAERR)
 
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
     timestamp = int(time.time())
     last_error = None
 
     while True:
+        practicum_resp = get_api_answer(timestamp)
         try:
-            practicum_resp = get_api_answer(timestamp)
             homework = check_response(practicum_resp)
             msg = parse_status(homework)
             if msg:
@@ -158,12 +159,12 @@ def main():
         except Exception as error:
             message = f'Сбой в работе программы: {error}'
             logger.error(message)
-            if error is last_error:
+            if error is not last_error:
                 send_message(bot, message)
                 last_error = error
 
         finally:
-            timestamp = int(time.time())
+            timestamp = practicum_resp.get('current_date')
             time.sleep(RETRY_PERIOD)
 
 
