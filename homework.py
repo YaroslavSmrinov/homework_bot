@@ -4,7 +4,7 @@ import os
 import time
 from http import HTTPStatus
 from sys import exit, stdout
-
+from typing import Union
 import requests
 import telegram
 from dotenv import load_dotenv
@@ -105,7 +105,7 @@ def get_api_answer(timestamp) -> dict:
         raise RequestException(f'Ошибка в запросе к практикуму. {error}')
 
 
-def check_response(response) -> dict | None:
+def check_response(response) -> Union[dict, None]:
     """
     проверяет ответ API на соответствие документации.
     В качестве параметра функция получает ответ API,
