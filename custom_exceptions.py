@@ -1,19 +1,18 @@
-import requests
-from telegram.error import TelegramError
-
-
-class RequestException(requests.exceptions.RequestException):
+class MyException(Exception):
     pass
 
 
-class CustomTelegramError(TelegramError):
+class RequestException(MyException):
     pass
 
 
-class HTTPError(requests.exceptions.HTTPError):
+class CustomTelegramError(MyException):
     pass
 
 
-class PractikumException(Exception):
+class HTTPError(MyException):
     pass
 
+
+class PractikumException(MyException):
+    pass

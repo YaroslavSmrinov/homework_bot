@@ -1,16 +1,16 @@
+import json
 import logging
 import os
-import requests
-from sys import stdout, exit
 import time
 from http import HTTPStatus
+from sys import exit, stdout
+
+import requests
 import telegram
 from dotenv import load_dotenv
 
-from custom_exceptions import (RequestException,
-                               CustomTelegramError,
-                               PractikumException)
-
+from custom_exceptions import (CustomTelegramError, HTTPError,
+                               PractikumException, RequestException)
 
 load_dotenv()
 
@@ -72,10 +72,12 @@ def send_message(bot, message) -> None:
             text=message
         )
         logger.debug('Сообщение в телеграм успешно отправлено.')
-    except CustomTelegramError as error:
-        raise (error, f'Ошибка при отправке. Причина: {error}')
-    except Exception as error:
+    except telegram.error.TelegramError as error:
         logger.error(f'Ошибка при отправке. Причина: {error}')
+        raise CustomTelegramError(f'Ошибка телеграм {error}')
+    except CustomTelegramError as error:
+        logger.error(f'Ошибка при отправке. Причина: {error}')
+        raise CustomTelegramError(f'Ошибка телеграм {error}')
 
 
 def get_api_answer(timestamp) -> dict:
@@ -91,14 +93,19 @@ def get_api_answer(timestamp) -> dict:
             params={'from_date': timestamp})
         if response.status_code == HTTPStatus.OK:
             logger.info('Успешно получили информацию от практикума.')
-            return response.json()
+            try:
+                logger.info('Преобразуем ответ в json формат.')
+                return response.json()
+            except json.decoder.JSONDecodeError as error:
+                raise json.decoder.JSONDecodeError(f'Ошибка преобазования '
+                                                   f'ответа в json {error}')
         else:
-            raise (PractikumException, RequestException)
+            raise PractikumException(f'Практикум недоступен {HTTPError}')
     except requests.exceptions.RequestException as error:
-        raise (RequestException, error)
+        raise RequestException(f'Ошибка в запросе к практикуму. {error}')
 
 
-def check_response(response) -> dict:
+def check_response(response) -> dict | None:
     """
     проверяет ответ API на соответствие документации.
     В качестве параметра функция получает ответ API,
@@ -106,16 +113,17 @@ def check_response(response) -> dict:
     В случае успеха возвращает последнюю домашку
     """
     if not isinstance(response, dict):
-        raise (PractikumException, f'Ожидал получить словарь, '
+        raise TypeError(f'Ожидал получить словарь, '
                                    f'получил {response}.')
     if 'homeworks' not in response:
-        raise (PractikumException, f'Нужных ключей нет, '
+        raise PractikumException(f'Нужных ключей нет, '
                                    f'только это {response.keys()}')
     if not isinstance(response['homeworks'], list):
-        raise (PractikumException, f'Ожидал список c ключом homeworks, '
+        raise TypeError(f'Ожидал список c ключом homeworks, '
                                    f'получил {response["homeworks"]}.')
     if len(response['homeworks']) < 1:
-        pass
+        logging.info('Отсутствуют работы в списке')
+        return None
     return response.get('homeworks')[0]
 
 
@@ -127,10 +135,10 @@ def parse_status(homework) -> str:
     в Telegram строку, содержащую один из вердиктов словаря HOMEWORK_VERDICTS.
     """
     if homework.get('status') not in HOMEWORK_VERDICTS.keys():
-        raise (KeyError, f'Неожиданный статус {homework.get("status")}')
+        raise KeyError(f'Неожиданный статус {homework.get("status")}')
     if 'homework_name' not in homework:
-        raise (KeyError, f'Не нашел ключик "homework_name", '
-                         f'только вот это {homework.keys()}')
+        raise KeyError(f'Не нашел ключик "homework_name", '
+                       f'только вот это {homework.keys()}')
     hw_status = homework.get('status')
     hw_name = homework.get('homework_name')
     verdict = HOMEWORK_VERDICTS.get(hw_status)
