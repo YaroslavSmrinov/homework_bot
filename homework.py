@@ -114,13 +114,13 @@ def check_response(response) -> dict | None:
     """
     if not isinstance(response, dict):
         raise TypeError(f'Ожидал получить словарь, '
-                                   f'получил {response}.')
+                        f'получил {response}.')
     if 'homeworks' not in response:
         raise PractikumException(f'Нужных ключей нет, '
-                                   f'только это {response.keys()}')
+                                 f'только это {response.keys()}')
     if not isinstance(response['homeworks'], list):
         raise TypeError(f'Ожидал список c ключом homeworks, '
-                                   f'получил {response["homeworks"]}.')
+                        f'получил {response["homeworks"]}.')
     if len(response['homeworks']) < 1:
         logging.info('Отсутствуют работы в списке')
         return None
