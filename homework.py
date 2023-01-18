@@ -5,6 +5,7 @@ import time
 from http import HTTPStatus
 from sys import exit, stdout
 from typing import Union
+
 import requests
 import telegram
 from dotenv import load_dotenv
