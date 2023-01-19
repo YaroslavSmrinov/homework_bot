@@ -76,7 +76,7 @@ def send_message(bot, message) -> None:
     except telegram.error.TelegramError as error:
         logger.error(f'Ошибка при отправке. Причина: {error}')
         raise CustomTelegramError(f'Ошибка телеграм {error}')
-    except CustomTelegramError as error:
+    except Exception as error:
         logger.error(f'Ошибка при отправке. Причина: {error}')
         raise CustomTelegramError(f'Ошибка телеграм {error}')
 
@@ -123,7 +123,7 @@ def check_response(response) -> Union[dict, None]:
         raise TypeError(f'Ожидал список c ключом homeworks, '
                         f'получил {response["homeworks"]}.')
     if len(response['homeworks']) < 1:
-        logging.info('Отсутствуют работы в списке')
+        logger.info('Отсутствуют работы в списке')
         return None
     return response.get('homeworks')[0]
 

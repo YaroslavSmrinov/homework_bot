@@ -1,18 +1,18 @@
-class MyException(Exception):
+class BaseCustomException(Exception):
     pass
 
 
-class RequestException(MyException):
+class RequestException(BaseCustomException):
     pass
 
 
-class CustomTelegramError(MyException):
+class CustomTelegramError(BaseCustomException):
     pass
 
 
-class HTTPError(MyException):
+class HTTPError(BaseCustomException):
     pass
 
 
-class PractikumException(MyException):
+class PractikumException(BaseCustomException):
     pass
